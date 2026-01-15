@@ -3,10 +3,15 @@ import Table from '@cloudscape-design/components/table';
 import PropertyFilter from '@cloudscape-design/components/property-filter';
 import Pagination from '@cloudscape-design/components/pagination';
 import Header from '@cloudscape-design/components/header';
-import SpaceBetween from '@cloudscape-design/components/space-between';
 import Box from '@cloudscape-design/components/box';
+import Select from '@cloudscape-design/components/select';
+import ButtonDropdown from '@cloudscape-design/components/button-dropdown';
+import Modal from '@cloudscape-design/components/modal';
+import FormField from '@cloudscape-design/components/form-field';
+import Input from '@cloudscape-design/components/input';
+import Button from '@cloudscape-design/components/button';
+import SpaceBetween from '@cloudscape-design/components/space-between';
 import { useCollection } from '@cloudscape-design/collection-hooks';
-import { SavedFiltersDropdown } from '../SavedFilters/SavedFiltersDropdown';
 import { useSavedFilters } from '../SavedFilters/useSavedFilters';
 
 /**
@@ -32,6 +37,8 @@ export function FilterableTable({
     pageSize = 20,
 }) {
     const [selectedItems, setSelectedItems] = useState([]);
+    const [showSaveModal, setShowSaveModal] = useState(false);
+    const [filterName, setFilterName] = useState('');
 
     // Saved filters management
     const {
@@ -88,17 +95,48 @@ export function FilterableTable({
         onSelectionChange?.(detail.selectedItems);
     };
 
-    // Apply saved filter when selected
-    const handleSelectFilter = (filterId) => {
-        selectFilter(filterId);
-        if (filterId) {
-            const filter = savedFilters.find(f => f.id === filterId);
-            if (filter?.query) {
-                setQuery(filter.query);
-            }
-        } else {
-            // Clear selection - reset to empty query
-            setQuery({ tokens: [], operation: 'and' });
+    // Handle save filter
+    const handleSaveFilter = () => {
+        if (filterName.trim()) {
+            saveFilter(filterName.trim(), query);
+            setFilterName('');
+            setShowSaveModal(false);
+        }
+    };
+
+    // Filter actions dropdown items
+    const filterActionItems = [
+        {
+            id: 'clear',
+            text: 'フィルターをクリア',
+        },
+        {
+            id: 'save',
+            text: '新規フィルターセットとして保存',
+            disabled: query.tokens.length === 0,
+        },
+        ...(selectedFilterId ? [{
+            id: 'delete',
+            text: '選択中のフィルターセットを削除',
+        }] : []),
+    ];
+
+    // Handle filter action click
+    const handleFilterAction = ({ detail }) => {
+        switch (detail.id) {
+            case 'clear':
+                setQuery({ tokens: [], operation: 'and' });
+                selectFilter(null);
+                break;
+            case 'save':
+                setShowSaveModal(true);
+                break;
+            case 'delete':
+                if (selectedFilterId) {
+                    deleteFilter(selectedFilterId);
+                    setQuery({ tokens: [], operation: 'and' });
+                }
+                break;
         }
     };
 
@@ -120,70 +158,141 @@ export function FilterableTable({
     }, [items, filteringProperties]);
 
     return (
-        <Table
-            {...collectionProps}
-            selectionType={selectionType}
-            selectedItems={selectedItems}
-            onSelectionChange={handleSelectionChange}
-            columnDefinitions={columnDefinitions}
-            items={filteredItems}
-            trackBy="id"
-            variant="full-page"
-            stickyHeader
-            header={
-                <Header
-                    counter={`(${filteredItemsCount})`}
-                    actions={actions}
-                    info={<span> Info</span>}
-                >
-                    {resourceName}
-                </Header>
-            }
-            filter={
-                <SpaceBetween direction="horizontal" size="xs">
-                    <SavedFiltersDropdown
-                        savedFilters={savedFilters}
-                        selectedFilterId={selectedFilterId}
-                        onSelectFilter={handleSelectFilter}
-                        onSaveFilter={saveFilter}
-                        onDeleteFilter={deleteFilter}
-                        currentQuery={query}
-                    />
+        <>
+            <Table
+                {...collectionProps}
+                selectionType={selectionType}
+                selectedItems={selectedItems}
+                onSelectionChange={handleSelectionChange}
+                columnDefinitions={columnDefinitions}
+                items={filteredItems}
+                trackBy="id"
+                variant="full-page"
+                stickyHeader
+                header={
+                    <Header
+                        counter={`(${filteredItemsCount})`}
+                        actions={actions}
+                        info={<span> Info</span>}
+                    >
+                        {resourceName}
+                    </Header>
+                }
+                filter={
                     <PropertyFilter
                         query={query}
                         onChange={({ detail }) => setQuery(detail)}
                         filteringOptions={filteringOptions}
                         filteringProperties={filteringProperties}
+                        enableTokenGroups
+                        customControl={
+                            <Select
+                                inlineLabelText="保存済みフィルターセット"
+                                placeholder="フィルターセットを選択"
+                                options={savedFilters.map(f => ({
+                                    value: f.id,
+                                    label: f.name,
+                                    labelTag: f.isDefault ? 'デフォルト' : undefined,
+                                }))}
+                                selectedOption={
+                                    selectedFilterId
+                                        ? { value: selectedFilterId, label: savedFilters.find(f => f.id === selectedFilterId)?.name }
+                                        : null
+                                }
+                                onChange={({ detail }) => {
+                                    const filterId = detail.selectedOption?.value || null;
+                                    selectFilter(filterId);
+                                    if (filterId) {
+                                        const filter = savedFilters.find(f => f.id === filterId);
+                                        if (filter?.query) {
+                                            setQuery(filter.query);
+                                        }
+                                    } else {
+                                        setQuery({ tokens: [], operation: 'and' });
+                                    }
+                                }}
+                                empty="保存済みフィルターなし"
+                            />
+                        }
+                        customFilterActions={
+                            <ButtonDropdown
+                                items={filterActionItems}
+                                onItemClick={handleFilterAction}
+                                ariaLabel="フィルター操作"
+                            />
+                        }
                         i18nStrings={{
-                            filteringAriaLabel: 'Filter resources',
-                            filteringPlaceholder: 'Find resources',
-                            groupValuesText: 'Values',
-                            groupPropertiesText: 'Properties',
-                            operatorsText: 'Operators',
-                            clearFiltersText: 'Clear filters',
-                            applyActionText: 'Apply',
-                            cancelActionText: 'Cancel',
-                            enteredTextLabel: (text) => `Use: "${text}"`,
-                            tokenLimitShowMore: 'Show more',
-                            tokenLimitShowFewer: 'Show fewer',
+                            filteringAriaLabel: 'リソースをフィルター',
+                            filteringPlaceholder: 'リソースを検索',
+                            groupValuesText: '値',
+                            groupPropertiesText: 'プロパティ',
+                            operatorsText: '演算子',
+                            // and/or選択の表示テキスト
+                            operationAndText: 'かつ',
+                            operationOrText: 'または',
+                            tokenOperatorAriaLabel: '演算子',
+                            // 演算子の説明テキスト（記号の横に表示される）
+                            operatorEqualsText: '等しい',
+                            operatorDoesNotEqualText: '等しくない',
+                            operatorContainsText: '含む',
+                            operatorDoesNotContainText: '含まない',
+                            operatorGreaterText: 'より大きい',
+                            operatorGreaterOrEqualText: '以上',
+                            operatorLessText: 'より小さい',
+                            operatorLessOrEqualText: '以下',
+                            operatorStartsWithText: 'で始まる',
+                            operatorDoesNotStartWithText: 'で始まらない',
+                            clearFiltersText: 'フィルターをクリア',
+                            applyActionText: '適用',
+                            cancelActionText: 'キャンセル',
+                            enteredTextLabel: (text) => `使用: "${text}"`,
+                            tokenLimitShowMore: 'もっと見る',
+                            tokenLimitShowFewer: '折りたたむ',
                             removeTokenButtonAriaLabel: (token) =>
-                                `Remove token ${token.propertyKey} ${token.operator} ${token.value}`,
+                                `トークンを削除 ${token.propertyKey} ${token.operator} ${token.value}`,
                         }}
                         expandToViewport
                     />
-                </SpaceBetween>
-            }
-            pagination={
-                <Pagination
-                    {...paginationProps}
-                    ariaLabels={{
-                        nextPageLabel: 'Next page',
-                        previousPageLabel: 'Previous page',
-                        pageLabel: (pageNumber) => `Page ${pageNumber}`,
-                    }}
-                />
-            }
-        />
+                }
+                pagination={
+                    <Pagination
+                        {...paginationProps}
+                        ariaLabels={{
+                            nextPageLabel: 'Next page',
+                            previousPageLabel: 'Previous page',
+                            pageLabel: (pageNumber) => `Page ${pageNumber}`,
+                        }}
+                    />
+                }
+            />
+
+            {/* Save Filter Modal */}
+            <Modal
+                visible={showSaveModal}
+                onDismiss={() => setShowSaveModal(false)}
+                header="フィルターセットを保存"
+                footer={
+                    <Box float="right">
+                        <SpaceBetween direction="horizontal" size="xs">
+                            <Button variant="link" onClick={() => setShowSaveModal(false)}>
+                                キャンセル
+                            </Button>
+                            <Button variant="primary" onClick={handleSaveFilter} disabled={!filterName.trim()}>
+                                保存
+                            </Button>
+                        </SpaceBetween>
+                    </Box>
+                }
+            >
+                <FormField label="フィルターセット名">
+                    <Input
+                        value={filterName}
+                        onChange={({ detail }) => setFilterName(detail.value)}
+                        placeholder="フィルターセットの名前を入力"
+                    />
+                </FormField>
+            </Modal>
+        </>
     );
 }
 

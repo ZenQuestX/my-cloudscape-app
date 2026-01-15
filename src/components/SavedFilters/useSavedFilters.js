@@ -2,6 +2,33 @@ import { useState, useCallback, useEffect } from 'react';
 
 const STORAGE_KEY = 'cloudscape-saved-filters';
 
+// Default filter sets (similar to Cloudscape demo)
+const DEFAULT_FILTERS = [
+    {
+        id: 'default-active-web',
+        name: 'Active web distributions',
+        query: {
+            operation: 'and',
+            tokens: [
+                { propertyKey: 'deliveryMethod', operator: '=', value: 'Web' },
+                { propertyKey: 'state', operator: '=', value: 'Activated' },
+            ],
+        },
+        isDefault: true,
+    },
+    {
+        id: 'default-custom-ssl',
+        name: 'Custom SSL certificates',
+        query: {
+            operation: 'and',
+            tokens: [
+                { propertyKey: 'sslCertificate', operator: '=', value: 'Custom' },
+            ],
+        },
+        isDefault: false,
+    },
+];
+
 /**
  * Custom hook for managing saved filter sets
  * Provides persistence to localStorage and CRUD operations
@@ -15,10 +42,16 @@ export function useSavedFilters() {
         try {
             const stored = localStorage.getItem(STORAGE_KEY);
             if (stored) {
-                setSavedFilters(JSON.parse(stored));
+                const parsed = JSON.parse(stored);
+                // Merge with defaults if needed
+                setSavedFilters(parsed.length > 0 ? parsed : DEFAULT_FILTERS);
+            } else {
+                // First time - use default filters
+                setSavedFilters(DEFAULT_FILTERS);
             }
         } catch (error) {
             console.error('Failed to load saved filters:', error);
+            setSavedFilters(DEFAULT_FILTERS);
         }
     }, []);
 
