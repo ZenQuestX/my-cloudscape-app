@@ -1,5 +1,13 @@
-// Sample data for distributions table
-export const sampleDistributions = [
+// Helper to generate random data
+const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+const getRandomDate = () => {
+    const date = new Date();
+    date.setDate(date.getDate() - getRandomInt(0, 30));
+    return date.toISOString().split('T')[0];
+};
+
+// Base data
+const baseData = [
     { id: 'BLUDPSDMUFA100', state: 'Activated', domainName: '021345abcdef6789.cloudfront...', deliveryMethod: 'Web', sslCertificate: 'Custom' },
     { id: 'CDUKONPMNPK126', state: 'Activated', domainName: 'abcdef01234567890.cloudfront...', deliveryMethod: 'Web', sslCertificate: 'Custom' },
     { id: 'CIRTXERTVJCC57', state: 'Activated', domainName: '1234abcdefg567890.cloudfront...', deliveryMethod: 'Web', sslCertificate: 'Default' },
@@ -30,12 +38,20 @@ export const sampleDistributions = [
     { id: 'QPYEXYVGJRF119', state: 'Activated', domainName: '1234abcdefg567890.cloudfront...', deliveryMethod: 'Web', sslCertificate: 'Custom' },
     { id: 'QTWOAEMDEUI148', state: 'Activated', domainName: '1234abcdefg567890.cloudfront...', deliveryMethod: 'Web', sslCertificate: 'Default' },
     { id: 'QVEJN3SOPYB102', state: 'Activated', domainName: '1234abcdefg567890.cloudfront...', deliveryMethod: 'Web', sslCertificate: 'Default' },
-    // Additional items with different states for filtering demo
+    // Additional items with different states
     { id: 'RTMP001XYZ', state: 'Deactivated', domainName: 'rtmp-example.cloudfront...', deliveryMethod: 'RTMP', sslCertificate: 'Default' },
     { id: 'RTMP002ABC', state: 'Pending', domainName: 'rtmp-pending.cloudfront...', deliveryMethod: 'RTMP', sslCertificate: 'Custom' },
     { id: 'WEB003DEF', state: 'Deactivated', domainName: 'web-deactivated.cloudfront...', deliveryMethod: 'Web', sslCertificate: 'Default' },
     { id: 'WEB004GHI', state: 'Pending', domainName: 'web-pending.cloudfront...', deliveryMethod: 'Web', sslCertificate: 'Custom' },
 ];
+
+// Add extra data types (Number, Boolean, Date)
+export const sampleDistributions = baseData.map(item => ({
+    ...item,
+    requests: getRandomInt(1000, 10000),
+    logging: Math.random() > 0.5,
+    lastModified: getRandomDate(),
+}));
 
 // Filter property definitions for PropertyFilter component
 export const filteringProperties = [
@@ -69,6 +85,24 @@ export const filteringProperties = [
         groupValuesLabel: 'SSL certificate values',
         operators: ['=', '!='],
     },
+    {
+        key: 'requests',
+        propertyLabel: 'Requests',
+        groupValuesLabel: 'Request values',
+        operators: ['=', '!=', '>', '>=', '<', '<='], // Number operators
+    },
+    {
+        key: 'logging',
+        propertyLabel: 'Logging',
+        groupValuesLabel: 'Logging values',
+        operators: ['='], // Boolean comparison
+    },
+    {
+        key: 'lastModified',
+        propertyLabel: 'Last Modified',
+        groupValuesLabel: 'Last Modified values',
+        operators: ['=', '!=', '>', '>=', '<', '<='], // Date comparison
+    },
 ];
 
 // Column definitions for Table component
@@ -97,6 +131,24 @@ export const columnDefinitions = [
         header: 'Delivery method',
         cell: item => item.deliveryMethod,
         sortingField: 'deliveryMethod',
+    },
+    {
+        id: 'requests',
+        header: 'Requests',
+        cell: item => item.requests.toLocaleString(), // Number formatting
+        sortingField: 'requests',
+    },
+    {
+        id: 'logging',
+        header: 'Logging',
+        cell: item => item.logging ? 'Enabled' : 'Disabled',
+        sortingField: 'logging',
+    },
+    {
+        id: 'lastModified',
+        header: 'Last Modified',
+        cell: item => item.lastModified,
+        sortingField: 'lastModified',
     },
     {
         id: 'sslCertificate',

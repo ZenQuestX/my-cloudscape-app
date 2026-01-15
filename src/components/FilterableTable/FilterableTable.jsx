@@ -10,7 +10,9 @@ import Modal from '@cloudscape-design/components/modal';
 import FormField from '@cloudscape-design/components/form-field';
 import Input from '@cloudscape-design/components/input';
 import Button from '@cloudscape-design/components/button';
+import DatePicker from '@cloudscape-design/components/date-picker';
 import SpaceBetween from '@cloudscape-design/components/space-between';
+
 import { useCollection } from '@cloudscape-design/collection-hooks';
 import { useSavedFilters } from '../SavedFilters/useSavedFilters';
 
@@ -39,6 +41,8 @@ export function FilterableTable({
     const [selectedItems, setSelectedItems] = useState([]);
     const [showSaveModal, setShowSaveModal] = useState(false);
     const [filterName, setFilterName] = useState('');
+    const [dateValue, setDateValue] = useState("");
+    console.log("FilterableTable rendered, dateValue:", dateValue);
 
     // Saved filters management
     const {
@@ -56,38 +60,112 @@ export function FilterableTable({
         operation: 'and',
     });
 
-    // Collection hooks for filtering, sorting, and pagination
+    // Custom filtering function to support numeric, boolean, and date operators
+    const applyFiltering = (items, query, dateValue) => {
+        const { tokens, operation } = query;
+
+        let filtered = items;
+
+        // Date Picker filtering
+        if (dateValue) {
+            filtered = filtered.filter(item => item.lastModified === dateValue);
+        }
+
+        // 1. Text search (if query.filteringText existed, but PropertyFilter uses tokens mainly. 
+        // If we attached a text filter search bar, we would handle it here. 
+        // Current PropertyFilter setup puts everything in tokens unless free text is enabled/handled separately)
+        // PropertyFilter's query object has { tokens, operation }. 
+
+        // 2. Token filtering
+        if (tokens && tokens.length > 0) {
+            const matchesToken = (item, token) => {
+                const { propertyKey, operator, value } = token;
+                const itemValue = item[propertyKey];
+
+                if (itemValue === undefined || itemValue === null) return false;
+
+                // Numeric comparison
+                if (typeof itemValue === 'number' || propertyKey === 'requests') {
+                    const numItem = Number(itemValue);
+                    const numValue = Number(value);
+                    if (isNaN(numItem) || isNaN(numValue)) return false;
+
+                    switch (operator) {
+                        case '=': return numItem === numValue;
+                        case '!=': return numItem !== numValue;
+                        case '>': return numItem > numValue;
+                        case '>=': return numItem >= numValue;
+                        case '<': return numItem < numValue;
+                        case '<=': return numItem <= numValue;
+                        default: return false;
+                    }
+                }
+
+                // Boolean comparison
+                if (typeof itemValue === 'boolean' || propertyKey === 'logging') {
+                    const strValue = String(value).toLowerCase();
+                    const boolValue = strValue === 'true' || strValue === 'enabled';
+                    const boolItem = Boolean(itemValue);
+
+                    if (operator === '!=') return boolItem !== boolValue;
+                    return boolItem === boolValue;
+                }
+
+                // Date comparison (iso string)
+                if (propertyKey === 'lastModified') {
+                    // Date string comparison works for ISO format
+                    switch (operator) {
+                        case '=': return itemValue === value;
+                        case '!=': return itemValue !== value;
+                        case '>': return itemValue > value;
+                        case '>=': return itemValue >= value;
+                        case '<': return itemValue < value;
+                        case '<=': return itemValue <= value;
+                        default: return false;
+                    }
+                }
+
+                // Default string comparison
+                const strItem = String(itemValue).toLowerCase();
+                const strValue = String(value).toLowerCase();
+
+                switch (operator) {
+                    case '=': return strItem === strValue;
+                    case '!=': return strItem !== strValue;
+                    case ':': return strItem.indexOf(strValue) !== -1;
+                    case '!:': return strItem.indexOf(strValue) === -1;
+                    case '^': return strItem.startsWith(strValue);
+                    case '!^': return !strItem.startsWith(strValue);
+                    default: return strItem === strValue;
+                }
+            };
+
+            filtered = filtered.filter(item => {
+                if (operation === 'or') {
+                    return tokens.some(token => matchesToken(item, token));
+                } else {
+                    return tokens.every(token => matchesToken(item, token));
+                }
+            });
+        }
+        return filtered;
+    };
+
+    // Apply filtering manually
+    const filteredItems = useMemo(() => applyFiltering(items, query, dateValue), [items, query, dateValue]);
+
+    // Use useCollection ONLY for pagination and sorting
     const {
-        items: filteredItems,
-        filteredItemsCount,
+        items: displayedItems, // Items to be displayed (paginated/sorted)
         collectionProps,
         paginationProps,
-    } = useCollection(items, {
-        propertyFiltering: {
-            filteringProperties,
-            query,
-            onChange: ({ detail }) => setQuery(detail),
-            empty: (
-                <Box textAlign="center" color="inherit">
-                    <b>No resources</b>
-                    <Box color="inherit" padding={{ bottom: 's' }}>
-                        No {resourceName.toLowerCase()} to display.
-                    </Box>
-                </Box>
-            ),
-            noMatch: (
-                <Box textAlign="center" color="inherit">
-                    <b>No matches</b>
-                    <Box color="inherit" padding={{ bottom: 's' }}>
-                        No {resourceName.toLowerCase()} match the filter criteria.
-                    </Box>
-                </Box>
-            ),
-        },
+    } = useCollection(filteredItems, {
         pagination: { pageSize },
         sorting: {},
         selection: {},
     });
+
+    const isFiltering = query.tokens && query.tokens.length > 0;
 
     // Handle selection changes
     const handleSelectionChange = ({ detail }) => {
@@ -127,6 +205,7 @@ export function FilterableTable({
             case 'clear':
                 setQuery({ tokens: [], operation: 'and' });
                 selectFilter(null);
+                setDateValue("");
                 break;
             case 'save':
                 setShowSaveModal(true);
@@ -144,7 +223,8 @@ export function FilterableTable({
     const filteringOptions = useMemo(() => {
         const options = [];
         filteringProperties.forEach(prop => {
-            const uniqueValues = [...new Set(items.map(item => item[prop.key]))];
+            // Use filteredItems instead of items to implement dependent filtering
+            const uniqueValues = [...new Set(filteredItems.map(item => item[prop.key]))];
             uniqueValues.forEach(value => {
                 if (value !== undefined && value !== null) {
                     options.push({
@@ -155,7 +235,7 @@ export function FilterableTable({
             });
         });
         return options;
-    }, [items, filteringProperties]);
+    }, [filteredItems, filteringProperties]);
 
     return (
         <>
@@ -165,16 +245,17 @@ export function FilterableTable({
                 selectedItems={selectedItems}
                 onSelectionChange={handleSelectionChange}
                 columnDefinitions={columnDefinitions}
-                items={filteredItems}
+                items={displayedItems}
                 trackBy="id"
                 variant="full-page"
                 stickyHeader
                 header={
                     <Header
-                        counter={`(${filteredItemsCount})`}
+                        counter={`(${filteredItems.length})`}
                         actions={actions}
                         info={<span> Info</span>}
                     >
+
                         {resourceName}
                     </Header>
                 }
@@ -184,7 +265,6 @@ export function FilterableTable({
                         onChange={({ detail }) => setQuery(detail)}
                         filteringOptions={filteringOptions}
                         filteringProperties={filteringProperties}
-                        enableTokenGroups
                         customControl={
                             <Select
                                 inlineLabelText="保存済みフィルターセット"
@@ -215,11 +295,18 @@ export function FilterableTable({
                             />
                         }
                         customFilterActions={
-                            <ButtonDropdown
-                                items={filterActionItems}
-                                onItemClick={handleFilterAction}
-                                ariaLabel="フィルター操作"
-                            />
+                            <SpaceBetween direction="horizontal" size="xs">
+                                <DatePicker
+                                    onChange={({ detail }) => setDateValue(detail.value)}
+                                    value={dateValue}
+                                    placeholder="YYYY/MM/DD(JP)"
+                                />
+                                <ButtonDropdown
+                                    items={filterActionItems}
+                                    onItemClick={handleFilterAction}
+                                    ariaLabel="フィルター操作"
+                                />
+                            </SpaceBetween>
                         }
                         i18nStrings={{
                             filteringAriaLabel: 'リソースをフィルター',
@@ -227,11 +314,9 @@ export function FilterableTable({
                             groupValuesText: '値',
                             groupPropertiesText: 'プロパティ',
                             operatorsText: '演算子',
-                            // and/or選択の表示テキスト
                             operationAndText: 'かつ',
                             operationOrText: 'または',
                             tokenOperatorAriaLabel: '演算子',
-                            // 演算子の説明テキスト（記号の横に表示される）
                             operatorEqualsText: '等しい',
                             operatorDoesNotEqualText: '等しくない',
                             operatorContainsText: '含む',
@@ -251,9 +336,9 @@ export function FilterableTable({
                             removeTokenButtonAriaLabel: (token) =>
                                 `トークンを削除 ${token.propertyKey} ${token.operator} ${token.value}`,
                         }}
-                        expandToViewport
                     />
                 }
+
                 pagination={
                     <Pagination
                         {...paginationProps}
